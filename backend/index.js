@@ -1,5 +1,7 @@
 import express from "express";
 import http from "http";
+import path from "path";
+import { fileURLToPath } from "url";
 import { Server as IOServer } from "socket.io";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -13,6 +15,8 @@ dotenv.config({});
 
 const app = express();
 const server = http.createServer(app);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 8000;
 
@@ -20,11 +24,13 @@ const DEFAULT_ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:5174
 const allowedOrigins = process.env.FRONTEND_ORIGIN
   ? process.env.FRONTEND_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
   : DEFAULT_ALLOWED_ORIGINS;
+const allowAllOriginsInProduction =
+  process.env.NODE_ENV === "production" && !process.env.FRONTEND_ORIGIN;
 
 const corsOptions = {
   origin(origin, callback) {
-    // Allow non-browser clients (like curl/postman) and configured browser origins.
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow non-browser clients, configured origins, and production same-app deploys.
+    if (!origin || allowAllOriginsInProduction || allowedOrigins.includes(origin)) {
       callback(null, true);
       return;
     }
@@ -59,7 +65,15 @@ app.use(
   cors(corsOptions)
 );
 
+if (process.env.NODE_ENV === "production") {
+  const frontendDistPath = path.resolve(__dirname, "../frontend/dist");
+  app.use(express.static(frontendDistPath));
+}
+
 app.get("/", (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.sendFile(path.resolve(__dirname, "../frontend/dist/index.html"));
+  }
   return res.status(200).json({ message: "I'm coming from backend", success: true });
 });
 
@@ -67,6 +81,15 @@ app.get("/", (req, res) => {
 app.use("/api/v1/user", userRoute);
 app.use("/api/v1/post", postRoute);
 app.use("/api/v1/message", messageRoute);
+
+if (process.env.NODE_ENV === "production") {
+  app.get("*", (req, res) => {
+    if (req.path.startsWith("/api/")) {
+      return res.status(404).json({ message: "API route not found", success: false });
+    }
+    return res.sendFile(path.resolve(__dirname, "../frontend/dist/index.html"));
+  });
+}
 
 // connect DB and start server
 const startServer = async () => {
