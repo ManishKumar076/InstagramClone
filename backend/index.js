@@ -83,7 +83,7 @@ app.use("/api/v1/post", postRoute);
 app.use("/api/v1/message", messageRoute);
 
 if (process.env.NODE_ENV === "production") {
-  app.get("*", (req, res) => {
+  app.use((req, res) => {
     if (req.path.startsWith("/api/")) {
       return res.status(404).json({ message: "API route not found", success: false });
     }
